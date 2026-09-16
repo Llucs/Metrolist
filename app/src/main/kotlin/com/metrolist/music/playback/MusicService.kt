@@ -2665,6 +2665,12 @@ class MusicService :
             return
         }
 
+        // During crossfade this listener is attached to the new player only,
+        // so an explicit pause would leave the fading track playing underneath.
+        if (isCrossfading && !playWhenReady) {
+            fadingPlayer?.pause()
+        }
+
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
             if (playWhenReady) {
                 isPausedByVolumeMute = false
@@ -3512,11 +3518,11 @@ class MusicService :
         try {
             var hops = 0
             val silenceProcessor = playerSilenceProcessors[player] ?: return
-            while (coroutineContext.isActive && instantSilenceSkipEnabled.value && silenceProcessor.isCurrentlySilent()) {
+            while (coroutineContext.isActive && instantSilenceSkipEnabled.value && !isCrossfading && silenceProcessor.isCurrentlySilent()) {
                 val current = player.currentPosition
                 val target = (current + INSTANT_SILENCE_SKIP_STEP_MS).coerceAtMost(duration - 500)
 
-                if (target <= current) break
+                if (target <= current || isCrossfading) break
 
                 // Reset silence tracking before seeking to prevent immediate re-trigger
                 silenceProcessor.resetTracking()
@@ -3526,6 +3532,8 @@ class MusicService :
                 if (hops >= 80 || target >= duration - 500) break
 
                 delay(INSTANT_SILENCE_SKIP_SETTLE_MS)
+
+                if (isCrossfading) break
             }
             if (hops > 0) {
                 Timber.tag(TAG).d("Silence skip: jumped $hops times")
