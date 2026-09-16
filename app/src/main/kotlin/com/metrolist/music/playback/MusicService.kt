@@ -3491,6 +3491,7 @@ class MusicService :
     private var isSilenceSkipping = false
 
     private fun handleLongSilenceDetected() {
+        if (isCrossfading) return
         if (!instantSilenceSkipEnabled.value) return
         if (silenceSkipJob?.isActive == true) return
 
@@ -3503,6 +3504,7 @@ class MusicService :
     }
 
     private suspend fun performInstantSilenceSkip() {
+        if (isCrossfading) return
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         if (duration <= INSTANT_SILENCE_SKIP_STEP_MS) return
 
@@ -4861,14 +4863,16 @@ class MusicService :
         player.addListener(
             object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (isCrossfading && fadingPlayer != null) {
-                        if (isPlaying) {
-                            fadingPlayer?.play()
-                        } else {
-                            fadingPlayer?.pause()
-                        }
-                    } else {
+                    if (!isCrossfading || fadingPlayer == null) {
                         player.removeListener(this)
+                        return
+                    }
+                    // Mirror explicit play/pause only. Buffering also reports
+                    // isPlaying=false and must not pause the fading track.
+                    if (isPlaying) {
+                        fadingPlayer?.play()
+                    } else if (!player.playWhenReady) {
+                        fadingPlayer?.pause()
                     }
                 }
             },
